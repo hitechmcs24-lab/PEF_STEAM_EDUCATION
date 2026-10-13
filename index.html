@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PEF STEAM Labs Initiative — Interactive Ecosystem Simulation</title>
+<style>
+:root{
+  --bg:#04060e; --bg2:#070b18; --panel:#0a0f1f;
+  --cyan:#00f0ff; --magenta:#ff2fd6; --green:#39ff88; --amber:#ffc233;
+  --dim:#5b6b8c; --text:#cfe6ff;
+  --mono:'Courier New',ui-monospace,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  background:var(--bg);color:var(--text);font-family:var(--mono);
+  min-height:100vh;overflow-x:hidden;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(0,240,255,.08), transparent),
+    radial-gradient(ellipse 60% 40% at 90% 110%, rgba(255,47,214,.07), transparent);
+}
+/* animated grid floor */
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:linear-gradient(rgba(0,240,255,.05) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(0,240,255,.05) 1px,transparent 1px);
+  background-size:44px 44px;
+  animation:gridmove 14s linear infinite;
+  mask-image:linear-gradient(to bottom,transparent,black 30%,black 75%,transparent);
+}
+@keyframes gridmove{from{background-position:0 0}to{background-position:44px 44px}}
+/* scanlines */
+body::after{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:50;
+  background:repeating-linear-gradient(0deg,rgba(0,0,0,.14) 0 1px,transparent 1px 3px);
+  mix-blend-mode:multiply;
+}
+.wrap{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:28px 20px 60px}
+
+/* ===== header ===== */
+header{text-align:center;padding:26px 0 8px;position:relative}
+.kicker{color:var(--cyan);font-size:12px;letter-spacing:.45em;text-transform:uppercase;
+  text-shadow:0 0 12px rgba(0,240,255,.8);animation:flicker 6s infinite}
+@keyframes flicker{0%,93%,95%,100%{opacity:1}94%{opacity:.35}}
+h1{font-size:clamp(34px,6vw,64px);font-weight:900;letter-spacing:.06em;margin:10px 0 2px;
+  background:linear-gradient(90deg,var(--cyan),var(--magenta),var(--green));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 0 18px rgba(0,240,255,.35))}
+.subtitle{color:var(--dim);font-size:13px;letter-spacing:.2em;text-transform:uppercase}
+.status{display:inline-flex;align-items:center;gap:8px;margin-top:16px;padding:7px 18px;
+  border:1px solid rgba(57,255,136,.4);border-radius:2px;font-size:12px;letter-spacing:.25em;
+  color:var(--green);background:rgba(57,255,136,.06);
+  box-shadow:0 0 18px rgba(57,255,136,.15), inset 0 0 18px rgba(57,255,136,.05)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--green);
+  box-shadow:0 0 10px var(--green);animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.3}}
+
+/* ===== ecosystem map ===== */
+.map{margin:34px 0 22px;padding:26px 18px;position:relative;
+  border:1px solid rgba(0,240,255,.22);background:linear-gradient(180deg,rgba(10,15,31,.9),rgba(6,9,20,.9));
+  clip-path:polygon(18px 0,100% 0,100% calc(100% - 18px),calc(100% - 18px) 100%,0 100%,0 18px)}
+.map::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(90deg,transparent 49.7%,rgba(0,240,255,.12) 50%,transparent 50.3%)}
+.map-title{text-align:center;color:var(--dim);font-size:11px;letter-spacing:.4em;margin-bottom:20px;text-transform:uppercase}
+.nodes{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;position:relative}
+.link-line{position:absolute;top:50%;left:5%;right:5%;height:2px;z-index:0;
+  background:repeating-linear-gradient(90deg,var(--cyan) 0 10px,transparent 10px 20px);
+  opacity:.35;animation:dashmove 1.2s linear infinite}
+@keyframes dashmove{to{background-position:20px 0}}
+.node{position:relative;z-index:1;cursor:pointer;text-align:center;padding:16px 8px 14px;
+  background:rgba(7,11,24,.92);border:1px solid rgba(91,107,140,.35);transition:.25s;
+  clip-path:polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px)}
+.node:hover{border-color:var(--cyan);box-shadow:0 0 22px rgba(0,240,255,.25);transform:translateY(-3px)}
+.node.active{border-color:var(--node,#00f0ff);box-shadow:0 0 26px color-mix(in srgb,var(--node,#00f0ff) 40%,transparent);
+  background:rgba(10,18,36,.95)}
+.node .idx{font-size:10px;letter-spacing:.3em;color:var(--dim)}
+.node .glyph{font-size:30px;line-height:1.4;color:var(--node,#00f0ff);
+  text-shadow:0 0 14px var(--node,#00f0ff);animation:bob 2.6s ease-in-out infinite}
+.node:nth-child(odd) .glyph{animation-delay:.6s}
+@keyframes bob{50%{transform:translateY(-4px)}}
+.node .nname{font-size:12px;font-weight:bold;letter-spacing:.12em;margin-top:4px}
+.node .ntag{font-size:10px;color:var(--dim);margin-top:3px}
+
+/* ===== scene panel ===== */
+.panel{border:1px solid rgba(0,240,255,.25);background:var(--panel);position:relative;
+  clip-path:polygon(24px 0,100% 0,100% calc(100% - 24px),calc(100% - 24px) 100%,0 100%,0 24px);
+  box-shadow:0 0 40px rgba(0,240,255,.08)}
+.panel-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;
+  padding:14px 20px;border-bottom:1px solid rgba(0,240,255,.15)}
+.scene-code{color:var(--magenta);font-size:12px;letter-spacing:.3em;text-shadow:0 0 10px rgba(255,47,214,.7)}
+.head-right{display:flex;gap:10px;align-items:center}
+.reset-btn{cursor:pointer;background:transparent;border:1px solid rgba(255,47,214,.5);color:var(--magenta);
+  font-family:var(--mono);font-size:11px;letter-spacing:.2em;padding:6px 14px;transition:.2s}
+.reset-btn:hover{background:rgba(255,47,214,.12);box-shadow:0 0 14px rgba(255,47,214,.3)}
+.panel-body{padding:22px 20px}
+.scene-title{font-size:clamp(20px,3vw,30px);letter-spacing:.05em;color:#fff;
+  text-shadow:0 0 16px rgba(0,240,255,.5)}
+.scene-sub{color:var(--cyan);font-size:12px;letter-spacing:.25em;text-transform:uppercase;margin:4px 0 10px}
+.scene-desc{color:#9fb4d8;font-size:14px;line-height:1.7;max-width:720px}
+
+.actions{margin:18px 0;display:grid;gap:8px}
+.action{display:flex;gap:10px;align-items:baseline;font-size:13px;color:#bfe9ff}
+.action::before{content:"↳";color:var(--green);text-shadow:0 0 8px var(--green)}
+
+/* sim viewport */
+.sim-shell{margin-top:18px;border:1px solid rgba(0,240,255,.3);background:#02040a;position:relative;
+  box-shadow:inset 0 0 60px rgba(0,20,40,.8)}
+.sim-shell::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(0deg,rgba(0,240,255,.03) 0 2px,transparent 2px 4px)}
+canvas#simCanvas{display:block;width:100%;height:340px}
+.sim-hud{position:absolute;top:8px;left:12px;font-size:10px;letter-spacing:.2em;color:var(--green);
+  text-shadow:0 0 8px rgba(57,255,136,.8);pointer-events:none}
+.sim-hud2{position:absolute;top:8px;right:12px;font-size:10px;letter-spacing:.2em;color:var(--cyan);
+  pointer-events:none;text-align:right}
+.sim-caption{padding:10px 14px;border-top:1px solid rgba(0,240,255,.15);font-size:11px;
+  color:var(--dim);letter-spacing:.12em;background:rgba(5,8,18,.8)}
+
+/* stats + footer of panel */
+.panel-foot{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;
+  padding:16px 20px;border-top:1px solid rgba(0,240,255,.15)}
+.stat-row{display:flex;gap:26px;flex-wrap:wrap}
+.stat b{display:block;font-size:26px;color:var(--cyan);text-shadow:0 0 12px rgba(0,240,255,.7)}
+.stat span{font-size:10px;color:var(--dim);letter-spacing:.2em;text-transform:uppercase}
+.next-btn{cursor:pointer;background:linear-gradient(90deg,rgba(0,240,255,.15),rgba(255,47,214,.15));
+  border:1px solid var(--cyan);color:var(--cyan);font-family:var(--mono);font-size:12px;
+  letter-spacing:.25em;padding:12px 26px;transition:.2s;
+  clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px)}
+.next-btn:hover{background:rgba(0,240,255,.18);box-shadow:0 0 22px rgba(0,240,255,.4);color:#fff}
+
+.flow{margin-top:22px;text-align:center;color:var(--dim);font-size:12px;letter-spacing:.3em}
+.flow b{color:var(--green);text-shadow:0 0 10px rgba(57,255,136,.7)}
+footer{margin-top:26px;text-align:center;color:var(--dim);font-size:11px;letter-spacing:.2em;line-height:2}
+@media(max-width:820px){.nodes{grid-template-columns:repeat(2,1fr)}.link-line{display:none}}
+@media(max-width:520px){.nodes{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">Punjab Education Foundation · Future-Ready Learning</div>
+  <h1>PEF STEAM LABS Initiative</h1>
+  <div class="subtitle">Interactive cyberpunk ecosystem simulation</div>
+  <div class="status"><span class="dot"></span>SIMULATION ONLINE · 5 CONNECTED INITIATIVES</div>
+</header>
+
+<section class="map">
+  <div class="map-title">◈ STEAM Ecosystem Map — Select an Initiative Node ◈</div>
+  <div class="nodes" id="nodes">
+    <div class="link-line"></div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <div class="scene-code" id="sceneCode">SCENE_01 // RESEARCH</div>
+    <div class="head-right">
+      <span style="font-size:11px;color:var(--dim);letter-spacing:.2em" id="sceneCount">INITIATIVE 1 OF 5</span>
+      <button class="reset-btn" id="resetBtn">⟲ RESET SIM</button>
+    </div>
+  </div>
+  <div class="panel-body">
+    <div class="scene-title" id="sceneTitle"></div>
+    <div class="scene-sub" id="sceneSub"></div>
+    <div class="scene-desc" id="sceneDesc"></div>
+    <div class="actions" id="sceneActions"></div>
+
+    <div class="sim-shell">
+      <canvas id="simCanvas"></canvas>
+      <div class="sim-hud" id="simHud">ROBOT SIM · STANDBY</div>
+      <div class="sim-hud2" id="simHud2"></div>
+      <div class="sim-caption" id="simCaption"></div>
+    </div>
+  </div>
+  <div class="panel-foot">
+    <div class="stat-row" id="statRow"></div>
+    <button class="next-btn" id="nextBtn">NEXT SCENE →</button>
+  </div>
+</section>
+
+<div class="flow">EXPLORE → PROTOTYPE → <b>TRAIN</b> → DEPLOY → IMPROVE</div>
+
+<footer>
+  SINGLE HTML FILE · HTML + CSS + JAVASCRIPT · NO EXTERNAL LIBRARIES<br>
+  © PUNJAB EDUCATION FOUNDATION — STEAM LABS INITIATIVE
+</footer>
+</div>
+
+<script>
+/* ================= SCENE DATA ================= */
+const SCENES=[
+ {idx:"01",code:"RESEARCH",glyph:"⌬",name:"Research Unit",tag:"AI · Sensors · R&D",color:"#00f0ff",
+  title:"PEF STEAM Space / Research Unit",
+  sub:"Robotics R&D Division",
+  desc:"A futuristic research hub transforming real-world problems into practical, classroom-ready innovations. Watch R-01, our research robot, sweep the sensor field and log live telemetry.",
+  actions:["Research sensors, embedded systems, and robotics.",
+           "Explore real-world AI applications.",
+           "Prototype, test, document, and improve practical solutions."],
+  sim:"research",
+  caption:"LIVE ROBOT SIM // R-01 patrols the sensor grid — radar sweep detects prototypes, telemetry streams to the research log.",
+  stats:[["05","Initiatives"],["01","Connected ecosystem"],["∞","Innovation potential"]]},
+ {idx:"02",code:"TRAINING",glyph:"◉",name:"Training",tag:"Teachers · Leaders",color:"#ff2fd6",
+  title:"PEF STEAM Space / Training",
+  sub:"Capacity-Building Division",
+  desc:"Teachers, school heads and PEF teams learn by doing. T-99, the training robot, streams knowledge packets to every learner station and tracks session progress in real time.",
+  actions:["Train teachers in STEAM pedagogy and robotics kits.",
+           "Build school-head leadership for lab management.",
+           "Run PEF awareness and orientation sessions."],
+  sim:"training",
+  caption:"LIVE ROBOT SIM // T-99 transmits knowledge packets to 3 learner stations — session progress loops every cycle.",
+  stats:[["03","Learner stations"],["100%","Engagement target"],["∞","Skill growth"]]},
+ {idx:"03",code:"STUDENTS",glyph:"✳",name:"Students",tag:"Clubs · PBL",color:"#39ff88",
+  title:"PEF STEAM Space / Students",
+  sub:"Innovation Clubs Division",
+  desc:"STEAM clubs and project-based learning come alive. A swarm of student-built micro-robots orbits the project core, competing, iterating and sparking new ideas.",
+  actions:["Launch school STEAM clubs and maker spaces.",
+           "Coach project-based learning challenges.",
+           "Prepare teams for competitions and expos."],
+  sim:"students",
+  caption:"LIVE ROBOT SIM // 4 club micro-robots orbit the project core — sparks fly when ideas collide; team scores tick upward.",
+  stats:[["04","Club robots"],["01","Project core"],["∞","Creativity"]]},
+ {idx:"04",code:"ROBOTICS",glyph:"⚙",name:"Robotics",tag:"Build · Test · Deploy",color:"#ffc233",
+  title:"PEF STEAM Space / Robotics",
+  sub:"Engineering Division",
+  desc:"From chassis to certified machine. The assembly line welds a new unit, runs it through the test gate, and stamps it ready for the schools of Punjab.",
+  actions:["Design and assemble robot chassis and drivetrains.",
+           "Test sensor fusion, control code and safety.",
+           "Package deployable kits for school labs."],
+  sim:"robotics",
+  caption:"LIVE ROBOT SIM // Assembly line builds unit-by-unit — weld sparks, test gate, walk-off certification, serial numbers increment.",
+  stats:[["A-01","Current unit"],["3","Build stages"],["∞","Units to deploy"]]},
+ {idx:"05",code:"SCHOOL VISITS",glyph:"⌖",name:"School Visits",tag:"Assess · Install · Train",color:"#00f0ff",
+  title:"PEF STEAM Space / School Visits",
+  sub:"Deployment Division",
+  desc:"The last mile. D-07 delivers lab crates to partner schools, installs equipment, trains local staff — and watches each campus light up green.",
+  actions:["Assess school readiness and infrastructure.",
+           "Install equipment and commission STEAM labs.",
+           "Train school teams on lab-specific operations."],
+  sim:"deploy",
+  caption:"LIVE ROBOT SIM // D-07 runs the delivery route to 5 partner schools — crates delivered, labs commissioned, campuses go green.",
+  stats:[["05","Partner schools"],["01","Delivery route"],["∞","Students reached"]]}
+];
+
+/* ================= CANVAS ENGINE ================= */
+const cv=document.getElementById("simCanvas"),ctx=cv.getContext("2d");
+let W=0,H=0;
+function resize(){const r=cv.getBoundingClientRect();W=cv.width=Math.max(300,r.width*devicePixelRatio);
+ H=cv.height=Math.max(200,r.height*devicePixelRatio);ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+ W=r.width;H=r.height;}
+new ResizeObserver(resize).observe(cv);resize();
+
+/* helpers */
+function glow(c){ctx.shadowColor=c;ctx.shadowBlur=14;}
+function noGlow(){ctx.shadowBlur=0;}
+function rr(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+function drawRobot(x,y,s,color,opts={}){
+  const t=performance.now()/1000;
+  // tracks
+  ctx.fillStyle="#101828";rr(x-18*s,y+14*s,36*s,10*s,5*s);ctx.fill();
+  ctx.strokeStyle=color;ctx.lineWidth=1.2;rr(x-18*s,y+14*s,36*s,10*s,5*s);ctx.stroke();
+  for(let i=0;i<3;i++){ctx.beginPath();ctx.arc(x-10*s+i*10*s,y+19*s,3*s,0,7);ctx.fillStyle="#1c2a44";ctx.fill();}
+  // body
+  glow(color);ctx.fillStyle="#0d1526";rr(x-16*s,y-8*s,32*s,24*s,6*s);ctx.fill();
+  ctx.strokeStyle=color;ctx.lineWidth=1.5;rr(x-16*s,y-8*s,32*s,24*s,6*s);ctx.stroke();noGlow();
+  // chest core
+  ctx.fillStyle=color;glow(color);
+  ctx.beginPath();ctx.arc(x,y+4*s,3.5*s+Math.sin(t*3)*0.8*s,0,7);ctx.fill();noGlow();
+  // head
+  ctx.fillStyle="#0d1526";glow(color);rr(x-11*s,y-24*s,22*s,15*s,5*s);ctx.fill();
+  ctx.strokeStyle=color;rr(x-11*s,y-24*s,22*s,15*s,5*s);ctx.stroke();noGlow();
+  // eyes
+  ctx.fillStyle=color;glow(color);
+  const blink=(Math.sin(t*1.7+x)>0.96)?0.2:1;
+  ctx.fillRect(x-7*s,y-19*s,4*s,3*s*blink);ctx.fillRect(x+3*s,y-19*s,4*s,3*s*blink);noGlow();
+  // antenna
+  ctx.strokeStyle=color;ctx.beginPath();ctx.moveTo(x,y-24*s);ctx.lineTo(x,y-31*s);ctx.stroke();
+  ctx.fillStyle=(Math.sin(t*4)>0)?color:"#223";glow(color);
+  ctx.beginPath();ctx.arc(x,y-32*s,2.2*s,0,7);ctx.fill();noGlow();
+  if(opts.arm){ // pointing/teaching arm
+    ctx.strokeStyle=color;ctx.lineWidth=2;glow(color);
+    ctx.beginPath();ctx.moveTo(x+16*s,y);ctx.lineTo(x+16*s+Math.cos(opts.arm)*16*s,y+Math.sin(opts.arm)*16*s);ctx.stroke();noGlow();
+  }
+  if(opts.crate){ // delivery crate
+    ctx.fillStyle="#132";ctx.strokeStyle="#39ff88";glow("#39ff88");
+    rr(x-9*s,y-44*s,18*s,12*s,2*s);ctx.fill();ctx.stroke();noGlow();
+    ctx.fillStyle="#39ff88";ctx.font=`${6*s}px monospace`;ctx.textAlign="center";ctx.fillText("LAB",x,y-36*s);
+  }
+}
+function spark(x,y,c){return{x,y,vx:(Math.random()-0.5)*3,vy:(Math.random()-0.5)*3-1,life:1,c};}
+function floorGrid(){ctx.strokeStyle="rgba(0,240,255,.07)";ctx.lineWidth=1;
+  for(let x=0;x<W;x+=36){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(let y=0;y<H;y+=36){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}}
+
+/* ================= SIMULATIONS ================= */
+const S={}; // active sim state
+function initSim(name){
+  const S={name,t:0,sparks:[],parts:[],hudT:0};
+  if(name==="research"){S.rx=40;S.dir=1;S.sweep=0;S.logs=[];S.blips=[];}
+  if(name==="training"){S.prog=0;S.pulse=0;for(let i=0;i<3;i++)S.parts.push({d:i,off:Math.random()});}
+  if(name==="students"){S.scores=[0,0,0,0];S.scoreT=0;S.bots=[0,1,2,3].map(i=>({a:i*1.57,r:52+i*16,sp:.5+i*.17}));}
+  if(name==="robotics"){S.phase=0;S.pt=0;S.serial=1;S.walkX=0;}
+  if(name==="deploy"){S.target=0;S.dx=50;S.dir=1;S.schools=[false,false,false,false,false];S.flash=[];S.wait=0;}
+  return S;
+}
+let sim=initSim("research");
+
+function simUpdate(dt){
+  sim.t+=dt;sim.hudT+=dt;
+  /* sparks decay */
+  sim.sparks=sim.sparks.filter(p=>(p.life-=dt*1.6)>0);
+  sim.sparks.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.05;});
+  if(sim.sparks.length<40&&Math.random()<.15)sim.sparks.push(spark(Math.random()*W,H*.55+Math.random()*H*.3,"#00f0ff"));
+
+  if(sim.name==="research"){
+    sim.sweep+=dt*1.4; sim.rx+=sim.dir*42*dt;
+    if(sim.rx>W-50||sim.rx<50)sim.dir*=-1;
+    if(Math.random()<dt*2){sim.blips.push({a:sim.sweep,x:sim.rx,y:H*.62,life:1});}
+    sim.blips=sim.blips.filter(b=>(b.life-=dt*.5)>0);
+    if(sim.hudT>0.5){sim.hudT=0;sim.logs.unshift(`> SENSOR[${(Math.random()*8|0)}] :: ${(Math.random()*100).toFixed(1)}% :: OK`);
+      sim.logs=sim.logs.slice(0,5);}
+  }
+  if(sim.name==="training"){
+    sim.prog+=dt/9; if(sim.prog>1)sim.prog=0;
+    sim.pulse+=dt*3;
+    sim.parts.forEach(p=>{p.off+=dt*(.25+p.d*.06);if(p.off>1){p.off=0;
+      sim.sparks.push(spark(W*.72+p.d*10,H*.55,"#ff2fd6"));}});
+  }
+  if(sim.name==="students"){
+    sim.bots.forEach(b=>b.a+=b.sp*dt);
+    sim.scoreT+=dt;
+    if(sim.scoreT>1.6){sim.scoreT=0;sim.scores[Math.random()*4|0]+=Math.floor(Math.random()*9)+1;}
+    sim.bots.forEach((b,i)=>{if(Math.random()<dt*1.2)sim.sparks.push(spark(W/2+Math.cos(b.a)*b.r,H/2+Math.sin(b.a)*b.r*.55,"#39ff88"));});
+  }
+  if(sim.name==="robotics"){
+    sim.pt+=dt;
+    if(sim.phase===0&&sim.pt>1.6){sim.phase=1;sim.pt=0;}
+    else if(sim.phase===1&&sim.pt>1.6){sim.phase=2;sim.pt=0;}
+    else if(sim.phase===2&&sim.pt>2.0){sim.phase=3;sim.pt=0;sim.walkX=0;}
+    else if(sim.phase===3){sim.walkX+=dt*70;if(sim.walkX>W+80){sim.phase=0;sim.pt=0;sim.serial++;}}
+    if(sim.phase===1&&Math.random()<.4)sim.sparks.push(spark(W*.32,H*.6,"#ffc233"));
+  }
+  if(sim.name==="deploy"){
+    const schoolsX=[W*.2,W*.36,W*.52,W*.68,W*.84];
+    if(sim.wait>0){sim.wait-=dt;if(sim.wait<=0){sim.target++;if(sim.target>4){sim.target=0;sim.schools=[false,false,false,false,false];}}}
+    else{
+      const tx=schoolsX[sim.target]-20;
+      const dx=tx-sim.dx; sim.dir=dx>0?1:-1;
+      sim.dx+=Math.sign(dx)*Math.min(Math.abs(dx),55*dt);
+      if(Math.abs(dx)<4){sim.schools[sim.target]=true;sim.flash.push({x:schoolsX[sim.target],t:0});
+        sim.wait=0.9;sim.sparks.push(spark(schoolsX[sim.target],H*.55,"#39ff88"));}
+    }
+    sim.flash=sim.flash.filter(f=>(f.t+=dt)<0.8);
+  }
+}
+
+function simDraw(){
+  ctx.clearRect(0,0,W,H);floorGrid();
+  const t=sim.t;
+  /* ambient sparks */
+  sim.sparks.forEach(p=>{ctx.globalAlpha=p.life;glow(p.c);ctx.fillStyle=p.c;
+    ctx.fillRect(p.x,p.y,2,2);});ctx.globalAlpha=1;noGlow();
+
+  if(sim.name==="research"){
+    const bx=W*.78,by=H*.34,R=Math.min(W,H)*.26;
+    // radar
+    glow("#00f0ff");ctx.strokeStyle="rgba(0,240,255,.7)";ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(bx,by,R,0,7);ctx.stroke();
+    ctx.strokeStyle="rgba(0,240,255,.25)";
+    ctx.beginPath();ctx.arc(bx,by,R*.66,0,7);ctx.stroke();
+    ctx.beginPath();ctx.arc(bx,by,R*.33,0,7);ctx.stroke();noGlow();
+    ctx.save();ctx.translate(bx,by);ctx.rotate(sim.sweep);
+    const grad=ctx.createLinearGradient(0,0,R,0);
+    grad.addColorStop(0,"rgba(0,240,255,0)");grad.addColorStop(1,"rgba(0,240,255,.5)");
+    ctx.fillStyle=grad;ctx.beginPath();ctx.moveTo(0,0);ctx.arc(0,0,R,-.5,0);ctx.closePath();ctx.fill();
+    ctx.strokeStyle="#00f0ff";glow("#00f0ff");ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(R,0);ctx.stroke();noGlow();ctx.restore();
+    sim.blips.forEach(b=>{ctx.globalAlpha=b.life;glow("#39ff88");ctx.fillStyle="#39ff88";
+      ctx.beginPath();ctx.arc(bx+Math.cos(b.a)*R*.5,by+Math.sin(b.a)*R*.5,3,0,7);ctx.fill();});
+    ctx.globalAlpha=1;noGlow();
+    // robot patrol
+    const bob=Math.sin(t*4)*2;
+    drawRobot(sim.rx,H*.72+bob,1.1,"#00f0ff");
+    // ground line
+    ctx.strokeStyle="rgba(0,240,255,.35)";ctx.beginPath();ctx.moveTo(20,H*.82);ctx.lineTo(W*.55,H*.82);ctx.stroke();
+    // scan beam
+    ctx.strokeStyle="rgba(0,240,255,.3)";ctx.setLineDash([4,6]);
+    ctx.beginPath();ctx.moveTo(sim.rx,H*.72);ctx.lineTo(sim.rx+40*sim.dir,H*.5);ctx.stroke();ctx.setLineDash([]);
+    // telemetry log
+    ctx.fillStyle="#39ff88";ctx.font="10px monospace";ctx.textAlign="left";
+    sim.logs.forEach((l,i)=>{ctx.globalAlpha=1-i*.15;ctx.fillText(l,16,H*.2+i*14);});ctx.globalAlpha=1;
+  }
+
+  if(sim.name==="training"){
+    // instructor robot
+    const bob=Math.sin(t*3)*2;
+    drawRobot(W*.2,H*.55+bob,1.5,"#ff2fd6",{arm:-0.4+Math.sin(t*2)*.35});
+    ctx.fillStyle="#ff2fd6";ctx.font="10px monospace";ctx.textAlign="center";
+    ctx.fillText("T-99 INSTRUCTOR",W*.2,H*.3);
+    // learner stations
+    for(let i=0;i<3;i++){
+      const x=W*.62+i*W*.11,y=H*.6;
+      ctx.fillStyle="#0d1526";ctx.strokeStyle="rgba(255,47,214,.7)";glow("#ff2fd6");
+      rr(x-26,y,52,8,2);ctx.fill();ctx.stroke();noGlow();
+      ctx.fillStyle="#131c30";rr(x-22,y-26,44,22,3);ctx.fill();
+      ctx.strokeStyle="rgba(255,47,214,.4)";rr(x-22,y-26,44,22,3);ctx.stroke();
+      // mini student robot
+      drawRobot(x,y-44+Math.sin(t*3+i)*2,.55,"#ff2fd6");
+      ctx.fillStyle="#cfe6ff";ctx.font="8px monospace";ctx.fillText("STATION_0"+(i+1),x,y+20);
+    }
+    // knowledge packets
+    sim.parts.forEach(p=>{
+      const i=p.d,x0=W*.2+24,y0=H*.55-30,x1=W*.62+i*W*.11,y1=H*.6-50;
+      const u=p.off,cu=(1-u)*(1-u),cm=2*(1-u)*u,uu=u*u;
+      const px=cu*x0+cm*(x0+120)+uu*x1, py=cu*y0+cm*(y0-90)+uu*y1;
+      glow("#ff2fd6");ctx.fillStyle="#ff2fd6";ctx.beginPath();ctx.arc(px,py,3,0,7);ctx.fill();noGlow();
+    });
+    // progress ring
+    const px=W*.2,py=H*.16;
+    glow("#ff2fd6");ctx.strokeStyle="rgba(255,47,214,.25)";ctx.lineWidth=4;
+    ctx.beginPath();ctx.arc(px,py,16,0,7);ctx.stroke();
+    ctx.strokeStyle="#ff2fd6";ctx.beginPath();ctx.arc(px,py,16,-Math.PI/2,-Math.PI/2+sim.prog*Math.PI*2);ctx.stroke();noGlow();
+    ctx.fillStyle="#fff";ctx.font="8px monospace";ctx.textAlign="center";
+    ctx.fillText(Math.round(sim.prog*100)+"%",px,py+3);
+  }
+
+  if(sim.name==="students"){
+    const cx=W/2,cy=H*.52;
+    // project core
+    ctx.save();ctx.translate(cx,cy);ctx.rotate(t*.6);
+    glow("#39ff88");ctx.strokeStyle="#39ff88";ctx.lineWidth=2;
+    for(let i=0;i<6;i++){ctx.rotate(Math.PI/3);ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,-26);ctx.stroke();}
+    ctx.beginPath();ctx.arc(0,0,26,0,7);ctx.stroke();noGlow();ctx.restore();
+    ctx.fillStyle="#39ff88";ctx.beginPath();ctx.arc(cx,cy,8+Math.sin(t*3)*2,0,7);ctx.fill();
+    ctx.fillStyle="#cfe6ff";ctx.font="9px monospace";ctx.textAlign="center";ctx.fillText("PROJECT CORE",cx,cy+48);
+    // orbit paths
+    ctx.strokeStyle="rgba(57,255,136,.15)";
+    sim.bots.forEach(b=>{ctx.beginPath();ctx.ellipse(cx,cy,b.r,b.r*.55,0,0,7);ctx.stroke();});
+    // club robots
+    sim.bots.forEach((b,i)=>{
+      const x=cx+Math.cos(b.a)*b.r,y=cy+Math.sin(b.a)*b.r*.55;
+      drawRobot(x,y,.7,"#39ff88");
+      ctx.fillStyle="#39ff88";ctx.font="8px monospace";ctx.textAlign="center";
+      ctx.fillText("CLUB-0"+(i+1)+" · "+sim.scores[i],x,y+28);
+    });
+    ctx.fillStyle="#9fb4d8";ctx.font="10px monospace";ctx.textAlign="left";
+    ctx.fillText("◈ STEAM CLUB LEAGUE — LIVE SCOREBOARD",16,24);
+  }
+
+  if(sim.name==="robotics"){
+    const baseY=H*.62;
+    // conveyor
+    ctx.fillStyle="#0c1424";ctx.fillRect(0,baseY+34,W,14);
+    ctx.strokeStyle="rgba(255,194,51,.5)";ctx.strokeRect(0,baseY+34,W,14);
+    ctx.fillStyle="rgba(255,194,51,.6)";
+    for(let x=-(t*60)%24;x<W;x+=24)ctx.fillRect(x,baseY+38,12,6);
+    // stage labels
+    ctx.font="9px monospace";ctx.textAlign="center";ctx.fillStyle="#5b6b8c";
+    ["01 ASSEMBLE","02 WELD","03 TEST","04 CERTIFY"].forEach((s,i)=>ctx.fillText(s,W*(.14+i*.24),baseY+72));
+    const sx=W*.14;
+    if(sim.phase<3){
+      const p=sim.phase;
+      // chassis appears in stage 0
+      if(p>=0){ctx.fillStyle="#13203a";glow("#ffc233");rr(sx-22,baseY+8,44,26,5);ctx.fill();
+        ctx.strokeStyle="#ffc233";rr(sx-22,baseY+8,44,26,5);ctx.stroke();noGlow();}
+      if(p>=1){ // head + arms
+        ctx.fillStyle="#13203a";glow("#ffc233");rr(sx-13,baseY-14,26,18,4);ctx.fill();
+        ctx.strokeStyle="#ffc233";rr(sx-13,baseY-14,26,18,4);ctx.stroke();noGlow();
+        ctx.fillStyle="#ffc233";ctx.fillRect(sx-8,baseY-8,5,4);ctx.fillRect(sx+3,baseY-8,5,4);
+        // weld sparks
+        if(p===1){glow("#ffc233");ctx.fillStyle="#fff";for(let i=0;i<3;i++)ctx.fillRect(sx-20+Math.random()*40,baseY+Math.random()*30,2,2);noGlow();}
+      }
+      if(p>=2){ // test gate
+        ctx.strokeStyle="rgba(255,194,51,.8)";glow("#ffc233");
+        ctx.beginPath();ctx.moveTo(W*.62,baseY-30);ctx.lineTo(W*.62,baseY+34);ctx.stroke();noGlow();
+        const ok=Math.sin(t*8)>0;
+        ctx.fillStyle=ok?"#39ff88":"#ff2fd6";glow(ctx.fillStyle);
+        ctx.font="bold 11px monospace";ctx.textAlign="center";
+        ctx.fillText(ok?"TEST: PASS":"TEST: RUN",W*.62,baseY-40);noGlow();
+      }
+    } else {
+      drawRobot(W*.14+sim.walkX,baseY+2,1.2,"#ffc233");
+    }
+    ctx.fillStyle="#ffc233";ctx.font="10px monospace";ctx.textAlign="left";
+    ctx.fillText("UNIT PEF-A-"+String(sim.serial).padStart(2,"0")+" // "+["ASSEMBLING","WELDING","TESTING","CERTIFIED ✓"][sim.phase],16,24);
+  }
+
+  if(sim.name==="deploy"){
+    const gy=H*.66;
+    // route line
+    ctx.setLineDash([5,7]);ctx.strokeStyle="rgba(0,240,255,.3)";
+    ctx.beginPath();ctx.moveTo(W*.08,gy);ctx.lineTo(W*.9,gy);ctx.stroke();ctx.setLineDash([]);
+    // base depot
+    ctx.fillStyle="#0d1526";ctx.strokeStyle="#00f0ff";glow("#00f0ff");
+    rr(W*.04,gy-30,44,30,3);ctx.fill();ctx.stroke();noGlow();
+    ctx.fillStyle="#00f0ff";ctx.font="8px monospace";ctx.textAlign="center";ctx.fillText("PEF DEPOT",W*.04+22,gy-36);
+    // schools
+    const schoolsX=[W*.2,W*.36,W*.52,W*.68,W*.84];
+    schoolsX.forEach((x,i)=>{
+      const on=sim.schools[i];
+      ctx.fillStyle=on?"#0e2418":"#0d1526";
+      ctx.strokeStyle=on?"#39ff88":"rgba(91,107,140,.6)";
+      if(on)glow("#39ff88");
+      ctx.beginPath();ctx.moveTo(x-22,gy);ctx.lineTo(x-22,gy-26);ctx.lineTo(x,gy-40);ctx.lineTo(x+22,gy-26);ctx.lineTo(x+22,gy);ctx.closePath();
+      ctx.fill();ctx.stroke();noGlow();
+      // door light
+      ctx.fillStyle=on?"#39ff88":"#1c2a44";if(on)glow("#39ff88");
+      ctx.fillRect(x-4,gy-14,8,14);noGlow();
+      ctx.fillStyle=on?"#39ff88":"#5b6b8c";ctx.font="8px monospace";ctx.textAlign="center";
+      ctx.fillText(on?"SCH-0"+(i+1)+" ✓ LAB LIVE":"SCH-0"+(i+1),x,gy+16);
+    });
+    // flash effects
+    sim.flash.forEach(f=>{ctx.globalAlpha=1-f.t;glow("#39ff88");ctx.strokeStyle="#39ff88";
+      ctx.beginPath();ctx.arc(f.x,gy-20,10+f.t*40,0,7);ctx.stroke();});ctx.globalAlpha=1;noGlow();
+    // delivery robot
+    drawRobot(sim.dx,gy-6+Math.sin(t*5)*1.5,1.1,"#00f0ff",{crate:true});
+    const done=sim.schools.filter(Boolean).length;
+    ctx.fillStyle="#00f0ff";ctx.font="10px monospace";ctx.textAlign="left";
+    ctx.fillText("ROUTE PROGRESS :: "+done+"/5 SCHOOLS COMMISSIONED",16,24);
+  }
+}
+
+/* HUD readouts */
+function hudText(){
+  if(sim.name==="research")return["ROBOT SIM // R-01 RESEARCH UNIT","TELEMETRY STREAM ACTIVE"];
+  if(sim.name==="training")return["ROBOT SIM // T-99 TRAINER","SESSION "+Math.round(sim.prog*100)+"%"];
+  if(sim.name==="students")return["ROBOT SIM // CLUB SWARM","LEADER: CLUB-0"+(sim.scores.indexOf(Math.max(...sim.scores))+1)];
+  if(sim.name==="robotics")return["ROBOT SIM // ASSEMBLY LINE","UNIT PEF-A-"+String(sim.serial).padStart(2,"0")];
+  if(sim.name==="deploy")return["ROBOT SIM // D-07 DELIVERY",sim.schools.filter(Boolean).length+"/5 LABS LIVE"];
+  return["",""];
+}
+
+/* ================= MAIN LOOP ================= */
+let last=performance.now();
+function frame(now){
+  const dt=Math.min(.05,(now-last)/1000);last=now;
+  simUpdate(dt);simDraw();
+  const[a,b]=hudText();
+  document.getElementById("simHud").textContent=a;
+  document.getElementById("simHud2").textContent=b;
+  requestAnimationFrame(frame);
+}
+
+/* ================= UI WIRING ================= */
+const nodesEl=document.getElementById("nodes");
+SCENES.forEach((s,i)=>{
+  const d=document.createElement("div");d.className="node";d.style.setProperty("--node",s.color);
+  d.innerHTML=`<div class="idx">${s.idx} / ${s.code}</div><div class="glyph">${s.glyph}</div>
+    <div class="nname">${s.name}</div><div class="ntag">${s.tag}</div>`;
+  d.onclick=()=>selectScene(i);
+  nodesEl.appendChild(d);
+});
+let cur=0;
+function selectScene(i){
+  cur=i;const s=SCENES[i];
+  document.querySelectorAll(".node").forEach((n,j)=>n.classList.toggle("active",j===i));
+  document.getElementById("sceneCode").textContent=`SCENE_${s.idx} // ${s.code}`;
+  document.getElementById("sceneCount").textContent=`INITIATIVE ${i+1} OF 5`;
+  document.getElementById("sceneTitle").textContent=s.title;
+  document.getElementById("sceneSub").textContent=s.sub;
+  document.getElementById("sceneDesc").textContent=s.desc;
+  document.getElementById("sceneActions").innerHTML=s.actions.map(a=>`<div class="action">${a}</div>`).join("");
+  document.getElementById("simCaption").textContent=s.caption;
+  document.getElementById("statRow").innerHTML=s.stats.map(([v,l])=>`<div class="stat"><b>${v}</b><span>${l}</span></div>`).join("");
+  document.getElementById("sceneCode").style.color=s.color;
+  sim=initSim(s.sim);
+}
+document.getElementById("nextBtn").onclick=()=>selectScene((cur+1)%5);
+document.getElementById("resetBtn").onclick=()=>selectScene(0);
+selectScene(0);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
